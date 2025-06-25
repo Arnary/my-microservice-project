@@ -2,7 +2,7 @@
 
 # Debian and Ubuntu
 
-set -ex
+set -e
 
 if ! command -v docker &> /dev/null; then
 	sudo apt update
