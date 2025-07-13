@@ -82,7 +82,7 @@ terraform destroy
 
 Модуль створює **ECR-репозиторій**, у якому можна зберігати Docker-образи:
 
-- `aws_ecr_repository` — з опціональним `image_scanning_configuration` (наприклад, `scan_on_push = true`)
-- `aws_ecr_repository_policy` — дозволяє EC2 (або іншим сервісам) тягнути образи (pull policy).
+- `aws_ecr_repository` - з опціональним `image_scanning_configuration` (наприклад, `scan_on_push = true`)
+- `aws_ecr_repository_policy` - дозволяє EC2 (або іншим сервісам) тягнути образи (pull policy).
 
 Політика за замовчуванням дозволяє сервісу `ec2.amazonaws.com` витягувати образи з ECR.
