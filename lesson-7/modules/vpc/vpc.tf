@@ -54,6 +54,6 @@ resource "aws_nat_gateway" "nat" {
   allocation_id = aws_eip.nat.id
   subnet_id     = aws_subnet.public[0].id  # NAT створюється в публічній підмережі
   tags = {
-    Name = "lesson-5-hw-nat"
+    Name = "lesson-7-hw-nat"
   }
 }

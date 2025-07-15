@@ -20,6 +20,25 @@ output "private_subnets" {
   value = module.vpc.private_subnet_ids
 }
 
+output "internet_gateway_id" {
+  value       = module.vpc.internet_gateway_id
+}
+
 output "ecr_repository_url" {
   value = module.ecr.repository_url
+}
+
+output "eks_cluster_endpoint" {
+  description = "EKS API endpoint for connecting to the cluster"
+  value       = module.eks.eks_cluster_endpoint
+}
+
+output "eks_cluster_name" {
+  description = "Name of the EKS cluster"
+  value       = module.eks.eks_cluster_name
+}
+
+output "eks_node_role_arn" {
+  description = "IAM role ARN for EKS Worker Nodes"
+  value       = module.eks.eks_node_role_arn
 }
