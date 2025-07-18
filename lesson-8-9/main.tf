@@ -32,3 +32,34 @@ module "eks" {
   min_size        = 2
   max_size        = 2
 }
+
+data "aws_eks_cluster" "eks" {
+  name = var.cluster_name
+}
+
+data "aws_eks_cluster_auth" "eks" {
+  name = var.cluster_name
+}
+
+provider "helm" {
+  kubernetes = {
+    host                   = data.aws_eks_cluster.eks.endpoint
+    cluster_ca_certificate = base64decode(data.aws_eks_cluster.eks.certificate_authority[0].data)
+    token                  = data.aws_eks_cluster_auth.eks.token
+  }
+}
+
+module "jenkins" {
+  source       = "./modules/jenkins"
+  cluster_name = module.eks.eks_cluster_name
+
+  providers = {
+    helm = helm
+  }
+}
+
+module "argo_cd" {
+  source       = "./modules/argo-cd"
+  namespace    = "argocd"
+  chart_version = "5.46.4"
+}
