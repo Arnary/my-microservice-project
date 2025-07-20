@@ -6,15 +6,17 @@
   - ECR - для зберігання Docker-образів.
   - EKS - для запуску Kubernetes-кластера.
   - VPC - для приватної мережі.
+  - RDS - для бази даних.
 - **Docker** - контейнеризація Django-додатку.
 - **Kubernetes + Helm** - для автоматичного деплою в кластер.
 - **Jenkins** - CI/CD сервер для автоматизації збірки.
 - **Argo CD** - GitOps Continuous Deployment для Kubernetes.
+- **AWS RDS** - для створення та управління реляційною базою даних.
 
 ## Структура проекту
 
 ```
-lesson-8-9/
+lesson-db-module/
 │
 ├── main.tf                  <- Головний файл для підключення модулів
 ├── backend.tf               <- Налаштування бекенду для стейтів (S3 + DynamoDB)
@@ -42,6 +44,13 @@ lesson-8-9/
 │   │   ├── aws_ebs_csi_driver.tf <- Встановлення плагіну csi drive
 │   │   ├── variables.tf          <- Змінні для EKS
 │   │   └── outputs.tf            <- Виведення інформації про кластер
+│   │
+│   ├── rds/                 <- Модуль для RDS
+│   │   ├── rds.tf           <- Створення RDS бази даних
+│   │   ├── aurora.tf        <- Створення aurora кластера бази даних
+│   │   ├── shared.tf        <- Спільні ресурси
+│   │   ├── variables.tf     <- Змінні (ресурси, креденшели, values)
+│   │   └── outputs.tf
 │   │
 │   ├── jenkins/             <- Модуль для Helm-установки Jenkins
 │   │   ├── jenkins.tf       <- Helm release для Jenkins
@@ -78,7 +87,7 @@ lesson-8-9/
 1. Ініціалізація Terraform (завантаження модулів, підключення до бекенду)
 
 ```
-cd lesson-8-9/
+cd lesson-db-module/
 terraform init
 ```
 
@@ -135,4 +144,194 @@ helm install django-app ./django-app
 ```
 helm uninstall django-app
 terraform destroy
+```
+
+## RDS Module
+
+Універсальний Terraform модуль для створення RDS інстансу або Aurora кластера з автоматичним налаштуванням всіх необхідних ресурсів.
+
+### Функціонал
+
+- **Підтримка Aurora Cluster та звичайної RDS instance**
+- **Автоматичне створення DB Subnet Group**
+- **Автоматичне створення Security Group з налаштованими правилами**
+- **Автоматичне створення Parameter Group з базовими параметрами**
+- **Підтримка різних движків**: PostgreSQL, MySQL
+- **Enhanced Monitoring та Performance Insights**
+- **Multi-AZ deployment**
+- **Автоматичні backup'и**
+
+### Використання
+
+Основний приклад (RDS Instance)
+
+```
+module "rds" {
+  source = "./modules/rds"
+
+  name                       = "django-db"
+
+  # Тип бази даних
+  use_aurora                 = true
+
+  aurora_instance_count      = 2
+
+  # --- Aurora-only ---
+  engine_cluster             = "aurora-postgresql"
+  engine_version_cluster     = "15.3"
+  parameter_group_family_aurora = "aurora-postgresql15"
+
+
+  # --- RDS-only ---
+  engine                     = "postgres"
+  engine_version             = "17.2"
+  parameter_group_family_rds = "postgres17"
+
+  # Common
+  instance_class             = "db.t3.medium"
+  allocated_storage          = 20
+  db_name                    = "djangoapp"
+  username                   = "postgres"
+  password                   = "admin123AWS23"
+  subnet_private_ids         = module.vpc.private_subnets
+  subnet_public_ids          = module.vpc.public_subnets
+  publicly_accessible        = true
+  vpc_id                     = module.vpc.vpc_id
+  multi_az                   = true
+  backup_retention_period    = 7
+  parameters = {
+    max_connections              = "200"
+    log_min_duration_statement   = "500"
+  }
+
+  tags = {
+    Environment = "dev"
+    Project     = "djangoapp"
+  }
+}
+```
+
+### Змінні модуля
+
+#### Обов'язкові змінні
+
+| Змінна               | Тип      | Опис                              |
+| -------------------- | -------- | --------------------------------- |
+| `password`           | `string` | Пароль для бази даних (sensitive) |
+| `vpc_id`             | `string` | ID VPC для розміщення RDS         |
+| `subnet_private_ids` | `string` | Список приватних ID підмереж      |
+| `subnet_public_ids`  | `string` | Список публічних ID підмереж      |
+
+#### Основні налаштування
+
+| Змінна        | Тип      | За замовчуванням | Опис                                       |
+| ------------- | -------- | ---------------- | ------------------------------------------ |
+| `use_aurora`  | `bool`   | `false`          | Використовувати Aurora Cluster замість RDS |
+| `name`        | `string` | `"django-db"`    | Назва проекту                              |
+| `environment` | `string` | `"dev"`          | Назва середовища                           |
+| `db_name`     | `string` | `"djangoapp"`    | Назва бази даних                           |
+| `username`    | `string` | `"postgres"`     | Ім'я користувача                           |
+
+#### Конфігурація движка
+
+| Змінна           | Тип      | За замовчуванням | Опис                        |
+| ---------------- | -------- | ---------------- | --------------------------- |
+| `engine`         | `string` | `"postgres"`     | Движок БД (postgres, mysql) |
+| `engine_version` | `string` | `"17.2"`         | Версія движка               |
+| `instance_class` | `string` | `"db.t3.medium"` | Клас інстансу               |
+
+#### Сховище (тільки для RDS)
+
+| Змінна              | Тип      | За замовчуванням | Опис                   |
+| ------------------- | -------- | ---------------- | ---------------------- |
+| `allocated_storage` | `number` | `20`             | Початковий розмір в GB |
+
+#### Безпека та мережа
+
+| Змінна     | Тип    | За замовчуванням | Опис                |
+| ---------- | ------ | ---------------- | ------------------- |
+| `multi_az` | `bool` | `true`           | Multi-AZ deployment |
+
+#### Backup та обслуговування
+
+| Змінна                    | Тип      | За замовчуванням | Опис                              |
+| ------------------------- | -------- | ---------------- | --------------------------------- |
+| `backup_retention_period` | `number` | `7`              | Період збереження backup'ів (дні) |
+
+#### Параметри БД
+
+| Змінна            | Тип      | За замовчуванням | Опис                           |
+| ----------------- | -------- | ---------------- | ------------------------------ |
+| `max_connections` | `number` | `200`            | Максимальна кількість з'єднань |
+
+### Як змінити конфігурацію БД
+
+#### 1. Зміна типу бази даних (RDS ↔ Aurora)
+
+```
+# Для звичайної RDS
+use_aurora = false
+
+# Для Aurora Cluster
+use_aurora = true
+```
+
+**Увага**: Зміна `use_aurora` призведе до перестворення всієї інфраструктури БД!
+
+#### 2. Зміна движка бази даних
+
+```
+# PostgreSQL
+engine         = "postgres"
+engine_version = "15.4"        # Доступні: 13.x, 14.x, 15.x, 16.x
+
+# MySQL
+engine         = "mysql"
+engine_version = "8.0.35"      # Доступні: 5.7.x, 8.0.x
+```
+
+#### 3. Зміна класу інстансу
+
+```
+# Development
+instance_class = "db.t3.micro"   # 1 vCPU, 1 GB RAM
+
+# Testing
+instance_class = "db.t3.small"   # 2 vCPU, 2 GB RAM
+instance_class = "db.t3.medium"  # 2 vCPU, 4 GB RAM
+
+# Production
+instance_class = "db.r6g.large"   # 2 vCPU, 16 GB RAM
+instance_class = "db.r6g.xlarge"  # 4 vCPU, 32 GB RAM
+instance_class = "db.r6g.2xlarge" # 8 vCPU, 64 GB RAM
+```
+
+#### 4. Налаштування сховища (тільки RDS)
+
+```
+# Малі БД
+allocated_storage     = 20    # Початкових 20 GB
+
+# Великі БД
+allocated_storage     = 100   # Початкових 100 GB
+```
+
+#### 5. Продакшн налаштування
+
+```
+# Високодоступність
+multi_az = true                 # Multi-AZ deployment
+
+# Довгі backup'и
+backup_retention_period = 30   # 30 днів backup'ів
+```
+
+#### 6. Оптимізація параметрів БД
+
+```
+# PostgreSQL оптимізація
+max_connections = 200
+
+# MySQL оптимізація
+max_connections = 300
 ```
