@@ -1,4 +1,6 @@
-# lesson-8-9: Реалізація повного CI/CD-процесу із використанням Jenkins + Helm + Terraform + Argo CD
+# final-project: Розгортання інфраструктури DevOps на AWS
+
+Комплексна інфраструктура для Django додатка з використанням AWS EKS, Jenkins CI/CD, ArgoCD, RDS/Aurora та моніторингом Prometheus + Grafana.
 
 - **Terraform** - для управління інфраструктурою як кодом.
 - **Amazon Web Services (AWS)**:
@@ -12,11 +14,23 @@
 - **Jenkins** - CI/CD сервер для автоматизації збірки.
 - **Argo CD** - GitOps Continuous Deployment для Kubernetes.
 - **AWS RDS** - для створення та управління реляційною базою даних.
+- **Prometheus** - збір та зберігання метрик.
+- **Grafana** - візуалізація метрик та дашборди.
+- **AlertManager** - керування сповіщеннями.
 
 ## Структура проекту
 
 ```
-lesson-db-module/
+django-app/
+│
+├── app/
+├── Dockerfile
+├── Jenkinsfile
+├── docker-compose.yml
+├── manage.py
+├── requirements.txt
+│
+final-project/
 │
 ├── main.tf                  <- Головний файл для підключення модулів
 ├── backend.tf               <- Налаштування бекенду для стейтів (S3 + DynamoDB)
@@ -87,7 +101,7 @@ lesson-db-module/
 1. Ініціалізація Terraform (завантаження модулів, підключення до бекенду)
 
 ```
-cd lesson-db-module/
+cd final-project/
 terraform init
 ```
 
@@ -109,6 +123,14 @@ terraform apply
 - S3 та DynamoDB для зберігання стану
 - ECR-репозиторій для образів
 - Kubernetes кластер (EKS)
+
+Перевірити стан ресурсів:
+
+```
+kubectl get all -n jenkins
+kubectl get all -n argocd
+kubectl get all -n monitoring
+```
 
 4. Аутентифікація в AWS:
 
@@ -138,6 +160,20 @@ helm install django-app ./django-app
 ```
 
 Після виконання усіх кроків ви повинні отримати повністю розгорнутий Django-застосунок у Kubernetes-кластері AWS, з горизонтальним автоскейлінгом, зовнішнім доступом через LoadBalancer та конфігурацією змінних середовища через ConfigMap.
+
+Перевірка доступності Jenkins та Argo CD:
+
+```
+kubectl port-forward svc/jenkins 8080:8080 -n jenkins
+
+kubectl port-forward svc/argocd-server 8081:443 -n argocd
+```
+
+Моніторинг та перевірка метрик:
+
+```
+kubectl port-forward svc/grafana 3000:80 -n monitoring
+```
 
 8. Видалення всіх створених ресурсів
 
@@ -335,3 +371,43 @@ max_connections = 200
 # MySQL оптимізація
 max_connections = 300
 ```
+
+## Моніторинг та метрики
+
+Після розгортання автоматично встановлюються дашборди:
+
+- Kubernetes Cluster Monitoring
+  - Загальний стан кластера
+  - Ресурси вузлів
+  - Мережевий трафік
+
+---
+
+- Kubernetes Pod Monitoring
+  - Стан подів
+  - Ресурси контейнерів
+  - Restart'и та помилки
+
+---
+
+- Node Exporter
+  - CPU, Memory, Disk
+  - Мережеві інтерфейси
+  - Завантаження системи
+
+---
+
+- Kubernetes Deployment
+  - Стан deployment'ів
+  - Replica sets
+  - Rolling updates
+
+## Алерти
+
+Автоматично налаштовані алерти:
+
+- HighMemoryUsage: >80% використання пам'яті контейнером
+- HighCPUUsage: >80% використання CPU
+- PodRestarting: Часті restart'и подів
+- KubernetesPodCrashLooping: Pod в crash loop
+- KubernetesNodeNotReady: Вузол недоступний

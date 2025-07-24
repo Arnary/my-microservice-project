@@ -174,10 +174,14 @@ venv/
 # Ignore Terraform state files and local directories
 *.tfstate
 *.tfstate.*
+*.tfstate
+*.tfstate.*
+*.tfvars
+*.tfvars.json
 .terraform.lock.hcl
 crash.log
 .terraform/
-lesson-7/.terraform/
+final-project/.terraform/
 
 # IDE files (example for VSCode)
 .vscode/
