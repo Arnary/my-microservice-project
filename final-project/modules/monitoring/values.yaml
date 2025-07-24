@@ -1,0 +1,266 @@
+# Конфігурація kube-prometheus-stack
+prometheus:
+  prometheusSpec:
+    retention: ${prometheus_retention}
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: gp2
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: ${prometheus_storage_size}
+
+    # Ресурси для Prometheus
+    resources:
+      requests:
+        memory: "1Gi"
+        cpu: "500m"
+      limits:
+        memory: "2Gi"
+        cpu: "1"
+
+    # Додаткові налаштування
+    additionalScrapeConfigs: []
+
+    # Service Monitor для додаткових сервісів
+    serviceMonitorSelectorNilUsesHelmValues: false
+    podMonitorSelectorNilUsesHelmValues: false
+    ruleSelectorNilUsesHelmValues: false
+
+  # Ingress для Prometheus (опціонально)
+  ingress:
+    enabled: ${create_ingress}
+    annotations:
+      kubernetes.io/ingress.class: "alb"
+      alb.ingress.kubernetes.io/scheme: internet-facing
+      alb.ingress.kubernetes.io/target-type: ip
+    hosts:
+      - ${prometheus_hostname}
+    paths:
+      - /*
+
+# Grafana конфігурація
+grafana:
+  enabled: true
+
+  adminPassword: ${grafana_admin_password}
+
+  # Persistent storage для Grafana
+  persistence:
+    enabled: true
+    storageClassName: gp2
+    size: ${grafana_storage_size}
+
+  # Ресурси для Grafana
+  resources:
+    requests:
+      memory: "256Mi"
+      cpu: "100m"
+    limits:
+      memory: "512Mi"
+      cpu: "500m"
+
+  # Додаткові плагіни
+  plugins:
+    - grafana-piechart-panel
+    - grafana-worldmap-panel
+    - grafana-clock-panel
+
+  # Service type
+  service:
+    type: ClusterIP
+    port: 80
+
+  # Ingress для Grafana
+  ingress:
+    enabled: ${create_ingress}
+    annotations:
+      kubernetes.io/ingress.class: "alb"
+      alb.ingress.kubernetes.io/scheme: internet-facing
+      alb.ingress.kubernetes.io/target-type: ip
+    hosts:
+      - ${grafana_hostname}
+    path: /*
+
+  # Datasources
+  datasources:
+    datasources.yaml:
+      apiVersion: 1
+      datasources:
+        - name: Prometheus
+          type: prometheus
+          url: http://prometheus-operated:9090
+          access: proxy
+          isDefault: true
+
+  # Готові dashboards
+  dashboardProviders:
+    dashboardproviders.yaml:
+      apiVersion: 1
+      providers:
+        - name: "default"
+          orgId: 1
+          folder: ""
+          type: file
+          disableDeletion: false
+          editable: true
+          options:
+            path: /var/lib/grafana/dashboards/default
+
+  dashboards:
+    default:
+      kubernetes-cluster-monitoring:
+        gnetId: 7249
+        revision: 1
+        datasource: Prometheus
+      kubernetes-pod-monitoring:
+        gnetId: 6417
+        revision: 1
+        datasource: Prometheus
+      node-exporter:
+        gnetId: 1860
+        revision: 27
+        datasource: Prometheus
+      kubernetes-deployment:
+        gnetId: 8588
+        revision: 1
+        datasource: Prometheus
+
+# Alertmanager конфігурація
+alertmanager:
+  enabled: ${enable_alertmanager}
+
+  alertmanagerSpec:
+    storage:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: gp2
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: ${alertmanager_storage_size}
+
+    resources:
+      requests:
+        memory: "128Mi"
+        cpu: "100m"
+      limits:
+        memory: "256Mi"
+        cpu: "200m"
+
+  # Ingress для Alertmanager
+  ingress:
+    enabled: ${create_ingress}
+    annotations:
+      kubernetes.io/ingress.class: "alb"
+      alb.ingress.kubernetes.io/scheme: internet-facing
+      alb.ingress.kubernetes.io/target-type: ip
+    hosts:
+      - ${alertmanager_hostname}
+    paths:
+      - /*
+
+  # Конфігурація сповіщень
+  config:
+    global:
+      slack_api_url: "${slack_webhook_url}"
+
+    route:
+      group_by: ["alertname"]
+      group_wait: 10s
+      group_interval: 10s
+      repeat_interval: 1h
+      receiver: "web.hook"
+
+    receivers:
+      - name: "web.hook"
+        slack_configs:
+          - channel: "${slack_channel}"
+            title: "Alert - {{ .GroupLabels.alertname }}"
+            text: "{{ range .Alerts }}{{ .Annotations.summary }}{{ end }}"
+
+# Node Exporter
+nodeExporter:
+  enabled: ${enable_node_exporter}
+
+  # Збір метрик з усіх вузлів
+  hostPID: true
+  hostIPC: true
+  hostNetwork: true
+
+  resources:
+    requests:
+      memory: "128Mi"
+      cpu: "100m"
+    limits:
+      memory: "256Mi"
+      cpu: "200m"
+
+# Kube State Metrics
+kubeStateMetrics:
+  enabled: ${enable_kube_state_metrics}
+
+  resources:
+    requests:
+      memory: "128Mi"
+      cpu: "100m"
+    limits:
+      memory: "256Mi"
+      cpu: "200m"
+
+# Prometheus Operator
+prometheusOperator:
+  enabled: true
+
+  resources:
+    requests:
+      memory: "128Mi"
+      cpu: "100m"
+    limits:
+      memory: "256Mi"
+      cpu: "200m"
+
+  # Налаштування для AWS EKS
+  kubeletService:
+    enabled: true
+    namespace: kube-system
+
+# Додаткові ServiceMonitors
+additionalServiceMonitors:
+  # Моніторинг Jenkins
+  - name: jenkins-metrics
+    selector:
+      matchLabels:
+        app.kubernetes.io/name: jenkins
+    endpoints:
+      - port: http
+        path: /prometheus
+        interval: 30s
+    namespaceSelector:
+      matchNames:
+        - jenkins
+
+# Правила сповіщень
+additionalPrometheusRules:
+  - name: custom-alerts
+    groups:
+      - name: kubernetes-apps
+        rules:
+          - alert: KubernetesPodCrashLooping
+            expr: rate(kube_pod_container_status_restarts_total[15m]) > 0
+            for: 5m
+            labels:
+              severity: warning
+            annotations:
+              summary: "Pod {{ $labels.pod }} is crash looping"
+              description: "Pod {{ $labels.pod }} in namespace {{ $labels.namespace }} is restarting frequently"
+
+          - alert: KubernetesNodeNotReady
+            expr: kube_node_status_condition{condition="Ready",status="true"} == 0
+            for: 5m
+            labels:
+              severity: critical
+            annotations:
+              summary: "Node {{ $labels.node }} is not ready"
+              description: "Node {{ $labels.node }} has been not ready for more than 5 minutes"
